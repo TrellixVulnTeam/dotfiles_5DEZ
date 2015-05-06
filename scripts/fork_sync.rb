@@ -28,11 +28,19 @@ class ForkSync
   end
 
   def execute
+    forkrepos = []
+
     forks.each do |repo_name, repo_fork|
       puts "--- " + "Synchronizing #{repo_name}".green + " ---"
       dir, upstream_repo = get_values(repo_fork)
 
-      ForkRepo.new(dir, upstream_repo).sync_fork
+      forkrepo = ForkRepo.new(dir, upstream_repo)
+      forkrepo.sync_fork
+      forkrepos << forkrepo
+    end
+
+    forkrepos.each do |f|
+      f.push_repo
     end
   end
 
@@ -48,10 +56,13 @@ end
 # this class contains details of a single forked repository
 class ForkRepo
   attr_reader :dir, :upstream_repo
+  attr_accessor :merged
 
   def initialize(dir, upstream_repo)
     @dir = dir
     @upstream_repo = upstream_repo
+    @should_push = false
+    merged = false
   end
 
   def sync_fork
@@ -79,7 +90,21 @@ class ForkRepo
     puts
   end
 
+  def push_repo
+    if should_push?
+      puts "--- " + "Pushing changes #{upstream_repo}".green + " ---"
+      goto_repo_dir
+      current_branch = `git rev-parse --abbrev-ref HEAD`
+      `git push #{current_branch}`
+    end
+  end
+
   private
+
+  def should_push?
+    sync_fork unless merged
+    @should_push
+  end
 
   def goto_repo_dir
     begin
@@ -123,6 +148,7 @@ class ForkRepo
     unless $?.success?
       abort "  error merging with upstream: #{upstream_repo}..."
     end
+    merged = true
   end
 
   def current_git_status
@@ -131,7 +157,12 @@ class ForkRepo
 
   def format_output(output)
     s = "  " + output.split("\n").at(1)
-    s =~ /[0-9]+/ ? s.pink : s.yellow
+    if s =~ /[0-9]+/
+      @should_push = true
+      s.pink
+    else
+      s.yellow
+    end
   end
 end
 
